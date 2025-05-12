@@ -1,1 +1,156 @@
+image: docker:latest
 
+services:
+  - docker:dind
+
+variables:
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_HOST: tcp://docker:2376
+  DOCKER_TLS_VERIFY: 1
+  DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+
+stages:
+  - build
+  - test
+  - security
+  - quality
+  - deploy
+
+# Templates pour les builds
+.build_template: &build_definition
+  stage: build
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA .
+    - docker push $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA
+  only:
+    - develop
+    - main
+
+# Build Frontend
+build_frontend:
+  <<: *build_definition
+  variables:
+    SERVICE_NAME: frontend
+  script:
+    - cd frontend
+    - docker build -t $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA .
+    - docker push $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA
+
+# Build Auth Service
+build_auth:
+  <<: *build_definition
+  variables:
+    SERVICE_NAME: auth-service
+  script:
+    - cd services/auth-service
+    - docker build -t $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA .
+    - docker push $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA
+
+# Build Product Service
+build_product:
+  <<: *build_definition
+  variables:
+    SERVICE_NAME: product-service
+  script:
+    - cd services/product-service
+    - docker build -t $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA .
+    - docker push $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA
+
+# Build Order Service
+build_order:
+  <<: *build_definition
+  variables:
+    SERVICE_NAME: order-service
+  script:
+    - cd services/order-service
+    - docker build -t $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA .
+    - docker push $CI_REGISTRY_IMAGE/$SERVICE_NAME:$CI_COMMIT_SHA
+
+# Tests
+test_frontend:
+  stage: test
+  image: node:latest
+  script:
+    - cd frontend
+    - npm install
+    - npm run test
+    - npm run test:coverage
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: frontend/coverage/cobertura-coverage.xml
+  only:
+    - develop
+    - main
+
+test_backend:
+  stage: test
+  image: node:latest
+  script:
+    - cd services/auth-service && npm install && npm test && npm run test:coverage
+    - cd ../product-service && npm install && npm test && npm run test:coverage
+    - cd ../order-service && npm install && npm test && npm run test:coverage
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: 
+          - services/auth-service/coverage/cobertura-coverage.xml
+          - services/product-service/coverage/cobertura-coverage.xml
+          - services/order-service/coverage/cobertura-coverage.xml
+  only:
+    - develop
+    - main
+
+# Security Scan
+security_scan:
+  stage: security
+  image: aquasec/trivy:latest
+  script:
+    - trivy image $CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHA
+    - trivy image $CI_REGISTRY_IMAGE/auth-service:$CI_COMMIT_SHA
+    - trivy image $CI_REGISTRY_IMAGE/product-service:$CI_COMMIT_SHA
+    - trivy image $CI_REGISTRY_IMAGE/order-service:$CI_COMMIT_SHA
+  allow_failure: true
+  only:
+    - develop
+    - main
+
+# SonarQube Analysis
+sonarqube:
+  stage: quality
+  image: sonarqube:latest
+  variables:
+    SONAR_HOST_URL: ${SONAR_HOST_URL}
+    SONAR_TOKEN: ${SONAR_TOKEN}
+  script:
+    - sonar-scanner
+  dependencies:
+    - test_frontend
+    - test_backend
+  only:
+    - develop
+    - main
+
+# Déploiement Staging
+deploy_staging:
+  stage: deploy
+  script:
+    - chmod +x scripts/deploy.sh
+    - ./scripts/deploy.sh
+  environment:
+    name: staging
+  only:
+    - develop
+
+# Déploiement Production
+deploy_production:
+  stage: deploy
+  script:
+    - docker stack deploy -c docker-compose.prod.yml e-commerce
+  environment:
+    name: production
+  only:
+    - main
+  when: manual

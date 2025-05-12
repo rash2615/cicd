@@ -2,85 +2,156 @@ version: '3.8'
 
 services:
   frontend:
-    image: ${CI_REGISTRY_IMAGE}/frontend:${IMAGE_TAG}
+    image: ${CI_REGISTRY_IMAGE}/frontend:${CI_COMMIT_SHA}
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
+      - VITE_PRODUCT_SERVICE_URL=http://product-service:3000
+      - VITE_AUTH_SERVICE_URL=http://auth-service:3001
+      - VITE_ORDER_SERVICE_URL=http://order-service:3002
+    depends_on:
+      - product-service
+      - auth-service
+      - order-service
+    networks:
+      - ecommerce-network
     deploy:
       replicas: 2
       update_config:
         parallelism: 1
         delay: 10s
-      placement:
-        constraints:
-          - node.role == worker
-    environment:
-      NODE_ENV: production
-      VITE_PRODUCT_SERVICE_URL: http://product-service:3000
-      VITE_AUTH_SERVICE_URL: http://auth-service:3001
-      VITE_ORDER_SERVICE_URL: http://order-service:3002
-    ports:
-      - "8080:8080"
-    networks:
-      - ecommerce_net
-
-  auth-service:
-    image: ${CI_REGISTRY_IMAGE}/auth_service:${IMAGE_TAG}
-    deploy:
-      replicas: 2
-      placement:
-        constraints:
-          - node.role == worker
-    environment:
-      NODE_ENV: production
-      MONGODB_URI: mongodb://mongodb:27017/auth
-      JWT_SECRET: ${JWT_SECRET}
-    networks:
-      - ecommerce_net
-
-  product-service:
-    image: ${CI_REGISTRY_IMAGE}/product_service:${IMAGE_TAG}
-    deploy:
-      replicas: 2
-      placement:
-        constraints:
-          - node.role == worker
-    environment:
-      NODE_ENV: production
-      MONGODB_URI: mongodb://mongodb:27017/ecommerce
-      JWT_SECRET: ${JWT_SECRET}
-    networks:
-      - ecommerce_net
+      restart_policy:
+        condition: on-failure
 
   order-service:
-    image: ${CI_REGISTRY_IMAGE}/order_service:${IMAGE_TAG}
+    image: ${CI_REGISTRY_IMAGE}/order-service:${CI_COMMIT_SHA}
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/orders
+      - JWT_SECRET=${JWT_SECRET}
+      - VITE_PRODUCT_SERVICE_URL=http://product-service:3000
+    depends_on:
+      - mongodb
+      - product-service
+    networks:
+      - ecommerce-network
     deploy:
       replicas: 2
-      placement:
-        constraints:
-          - node.role == worker
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+
+  product-service:
+    image: ${CI_REGISTRY_IMAGE}/product-service:${CI_COMMIT_SHA}
     environment:
-      NODE_ENV: production
-      MONGODB_URI: mongodb://mongodb:27017/orders
-      JWT_SECRET: ${JWT_SECRET}
-      VITE_PRODUCT_SERVICE_URL: http://product-service:3000
+      - MONGODB_URI=mongodb://mongodb:27017/ecommerce
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - mongodb
     networks:
-      - ecommerce_net
+      - ecommerce-network
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+
+  auth-service:
+    image: ${CI_REGISTRY_IMAGE}/auth-service:${CI_COMMIT_SHA}
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/auth
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - mongodb
+    networks:
+      - ecommerce-network
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
 
   mongodb:
     image: mongo:4.4
-    deploy:
-      placement:
-        constraints:
-          - node.role == manager
     volumes:
       - mongodb_data:/data/db
     environment:
-      MONGO_INITDB_DATABASE: ecommerce
+      - MONGO_INITDB_DATABASE=ecommerce
     networks:
-      - ecommerce_net
+      - ecommerce-network
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    networks:
+      - ecommerce-network
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    networks:
+      - ecommerce-network
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:latest
+    command: --mongodb.uri=mongodb://mongodb:27017
+    ports:
+      - "9216:9216"
+    networks:
+      - ecommerce-network
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
+networks:
+  ecommerce-network:
+    driver: overlay
 
 volumes:
   mongodb_data:
     driver: local
-
-networks:
-  ecommerce_net:
-    driver: overlay
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

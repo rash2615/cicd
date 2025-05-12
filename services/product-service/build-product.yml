@@ -1,0 +1,26 @@
+build:
+  stage: build
+  image: node:latest
+  script:
+    - npm install
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+  only:
+    - develop
+    - main
+
+test:
+  stage: test
+  image: node:latest
+  script:
+    - npm install
+    - npm test
+  artifacts:
+    reports:
+      junit: test-results.xml
+  only:
+    - develop
+    - main
