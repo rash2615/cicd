@@ -776,79 +776,46 @@ curl -X POST http://localhost:3002/api/orders \
 
    - Utilisez l'interface GitLab pour surveiller l'exécution des pipelines, vérifier les rapports de sécurité et consulter les résultats des tests.
 
-# E-Commerce Microservices avec Pipeline CI/CD
+# E-Commerce Microservices Application
 
-## Architecture du Pipeline CI/CD
+## Description
+Application e-commerce basée sur une architecture microservices avec CI/CD automatisé.
 
-Le projet utilise GitLab CI/CD pour automatiser les processus de build, test et déploiement. Le pipeline est configuré pour gérer trois environnements : développement, staging et production.
+## Prérequis
+- Node.js 18+
+- Docker et Docker Compose
+- MongoDB
+- Git
 
-### Structure du Pipeline
+## Configuration CI/CD
 
-1. **Build Stage**
-   - Build du frontend Vue.js
-   - Build des microservices (Auth, Product, Order)
-   - Génération des images Docker
+### GitHub Actions
+Le pipeline CI/CD est configuré avec GitHub Actions et comprend les étapes suivantes :
 
-2. **Test Stage**
-   - Tests unitaires du frontend
-   - Tests unitaires des microservices
-   - Génération des rapports de test
+1. **Build et Test**
+   - Construction des images Docker pour chaque service
+   - Exécution des tests unitaires
+   - Push des images vers GitHub Container Registry
 
-3. **Security Stage**
-   - Scan des vulnérabilités avec Trivy
-   - Analyse des images Docker
+2. **Sécurité**
+   - Analyse des vulnérabilités avec Trivy
+   - Scan des dépendances
 
-4. **Deploy Stage**
-   - Déploiement sur l'environnement de staging (branche develop)
-   - Déploiement sur l'environnement de production (branche main)
+3. **Qualité du Code**
+   - Analyse SonarCloud
+   - Vérification de la couverture de code
 
-### Workflow Git
-
-Le projet suit le workflow GitFlow :
-
-- `main` : Branche de production
-- `develop` : Branche de développement
-- `feature/*` : Branches pour les nouvelles fonctionnalités
-- `release/*` : Branches pour les versions
-- `hotfix/*` : Branches pour les corrections urgentes
+4. **Déploiement**
+   - Environnement de staging (branche develop)
+   - Environnement de production (branche main)
 
 ### Variables d'Environnement Requises
+- `SONAR_TOKEN`: Token d'authentification SonarCloud
+- `JWT_SECRET`: Clé secrète pour JWT
+- `GRAFANA_PASSWORD`: Mot de passe pour Grafana
 
-Les variables suivantes doivent être configurées dans GitLab CI/CD :
-
-- `CI_REGISTRY_IMAGE` : URL du registry Docker
-- `JWT_SECRET` : Clé secrète pour l'authentification
-- `MONGODB_URI` : URI de connexion MongoDB
-- Variables SSH pour le déploiement
-
-### Déploiement
-
-1. **Environnement de Staging**
-   - Déclenché automatiquement sur la branche develop
-   - Utilise le script deploy.sh
-   - Déploie avec Docker Compose
-
-2. **Environnement de Production**
-   - Déclenché manuellement sur la branche main
-   - Utilise Docker Swarm
-   - Déploie avec docker-compose.prod.yml
-
-### Sécurité
-
-- Scan des vulnérabilités avec Trivy
-- Tests de sécurité automatisés
-- Validation des images Docker
-
-### Monitoring
-
-- Logs des tests et des déploiements
-- Rapports de qualité du code
-- Métriques de performance
-
-## Contribution
-
-1. Créez une branche feature depuis `develop`
-2. Développez et testez vos modifications
-3. Soumettez une merge request vers `develop`
-4. Après validation, la modification sera déployée en staging
-5. Une fois validée en staging, elle pourra être déployée en production
+### Workflow Git
+1. `develop`: Branche de développement
+2. `main`: Branche de production
+3. Feature branches: `feature/*`
+4. Hotfix branches: `hotfix/*`
